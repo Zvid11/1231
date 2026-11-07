@@ -716,6 +716,9 @@
         let isStrictProfanityEnabled = true;
         let isMaintenanceMode = false;
 
+        // Канал зв'язку реального часу між усіма відкритими вкладками/користувачами
+        const adminBroadcast = new BroadcastChannel('firststep_admin_channel');
+
         let usersList = [
             { username: 'admin', email: 'admin@firststep.ua', role: 'admin', status: 'Активний' }
         ];
@@ -770,15 +773,48 @@
         let activePortfolioId = null;
         let currentFilterValue = 'all';
 
-        // Ініціалізація
+        // Ініціалізація та слухач синхронізації адмінки для всіх відвідувачів
         document.addEventListener('DOMContentLoaded', () => {
             renderPortfolios();
             updateUserUI();
             initActivityLog();
+
+            // Прийом адмін-команд для УСІХ відкритих вкладок/користувачів
+            adminBroadcast.onmessage = (event) => {
+                const { type, payload } = event.data;
+                handleGlobalAdminCommand(type, payload);
+            };
         });
 
+        // Функція обробки команд адміна на всіх клієнтах
+        function handleGlobalAdminCommand(type, payload) {
+            if (type === 'PENNYWISE_ABUSE') {
+                executePennywiseUI();
+            } else if (type === 'SOUND_EFFECT') {
+                triggerSoundEffect(payload.mode);
+            } else if (type === 'STROBE_ALARM') {
+                executeStrobeAlarmUI();
+            } else if (type === 'BROADCAST_TOAST') {
+                showToast(`[АДМІНІСТРАЦІЯ]: ${payload.text}`);
+                triggerSoundEffect('laser');
+            } else if (type === 'MAINTENANCE_TOGGLE') {
+                isMaintenanceMode = payload.enabled;
+                if (isMaintenanceMode) {
+                    showToast("⚠️ УВАГА: Сайт переведено в режим обслуговування адміністратором!");
+                } else {
+                    showToast("✅ Режим обслуговування вимкнено адміністратором.");
+                }
+            } else if (type === 'PORTFOLIOS_UPDATED') {
+                portfolios = payload.portfolios;
+                renderPortfolios();
+            }
+        }
+
         // ГУЧНИЙ ЗВУКОВИЙ ДВИГУН (Генератор звукових частот через AudioContext)
-        function triggerSoundEffect(mode = 'moan') {
+        function triggerSoundEffect(mode = 'moan', isLocalCall = false) {
+            if (isLocalCall) {
+                adminBroadcast.postMessage({ type: 'SOUND_EFFECT', payload: { mode } });
+            }
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 if (!AudioCtx) return;
@@ -786,7 +822,6 @@
                 const now = ctx.currentTime;
 
                 if (mode === 'moan' || mode === 'screamer') {
-                    // Гучний крик / скример
                     const osc = ctx.createOscillator();
                     const gain = ctx.createGain();
                     osc.type = 'sawtooth';
@@ -805,7 +840,6 @@
                     osc.start(now);
                     osc.stop(now + 2.4);
                 } else if (mode === 'alarm') {
-                    // Сирена тривоги
                     for (let i = 0; i < 4; i++) {
                         const osc = ctx.createOscillator();
                         const gain = ctx.createGain();
@@ -824,7 +858,6 @@
                         osc.stop(startTime + 0.4);
                     }
                 } else if (mode === 'laser') {
-                    // Кібер лазер
                     const osc = ctx.createOscillator();
                     const gain = ctx.createGain();
                     osc.type = 'sawtooth';
@@ -842,6 +875,92 @@
                 }
             } catch (e) {
                 console.log("Audio play blocked", e);
+            }
+        }
+
+        // Запуск спецефекту Pennywise (Транслюється всім)
+        function triggerPennywiseAbuse() {
+            adminBroadcast.postMessage({ type: 'PENNYWISE_ABUSE' });
+            executePennywiseUI();
+        }
+
+        function executePennywiseUI() {
+            const overlay = document.getElementById('pennywiseOverlay');
+            const container = document.getElementById('pennywiseContainer');
+
+            overlay.classList.remove('hidden');
+            container.classList.remove('pennywise-active');
+            
+            void container.offsetWidth;
+            container.classList.add('pennywise-active');
+
+            triggerSoundEffect('screamer');
+            addActivityLog("Активовано Pennywise + Гучний Screamer для УСІХ");
+
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+            }, 3500);
+        }
+
+        // Стробоскоп з сиреною (Транслюється всім)
+        function triggerStrobeAlarm() {
+            adminBroadcast.postMessage({ type: 'STROBE_ALARM' });
+            executeStrobeAlarmUI();
+        }
+
+        function executeStrobeAlarmUI() {
+            triggerSoundEffect('alarm');
+            const body = document.getElementById('appBody');
+            body.classList.add('alarm-strobe');
+            addActivityLog("Увімкнено світлову сирену стробоскопа для УСІХ");
+
+            setTimeout(() => {
+                body.classList.remove('alarm-strobe');
+            }, 2500);
+        }
+
+        // Broadcast повідомлення для УСІХ
+        function adminBroadcastToastPrompt() {
+            const msg = prompt("Введіть текст оголошення для усіх користувачів:");
+            if (msg) {
+                adminBroadcast.postMessage({ type: 'BROADCAST_TOAST', payload: { text: msg } });
+                showToast(`[ОГОЛОШЕННЯ]: ${msg}`);
+                triggerSoundEffect('laser');
+                addActivityLog(`Broadcast розсилка для усіх: "${msg}"`);
+            }
+        }
+
+        // 14. Режим обслуговування для УСІХ
+        function adminToggleMaintenance() {
+            isMaintenanceMode = !isMaintenanceMode;
+            adminBroadcast.postMessage({ type: 'MAINTENANCE_TOGGLE', payload: { enabled: isMaintenanceMode } });
+            if (isMaintenanceMode) {
+                showToast("Сайт переведено в Режим Обслуговування для УСІХ!");
+                addActivityLog("УВІМКНЕНО Maintenance Mode (Глобально)");
+            } else {
+                showToast("Режим обслуговування вимкнено!");
+                addActivityLog("ВИМКНЕНО Maintenance Mode (Глобально)");
+            }
+        }
+
+        // Видалення портфоліо з синхронізацією у всіх
+        function adminDeletePortfolio(id) {
+            portfolios = portfolios.filter(p => p.id !== id);
+            adminBroadcast.postMessage({ type: 'PORTFOLIOS_UPDATED', payload: { portfolios } });
+            openAdminModal();
+            renderPortfolios();
+            showToast("Портфоліо видалено Глобально");
+            addActivityLog(`Адміністратор видалив портфоліо ID: ${id}`);
+        }
+
+        function adminDeleteAllPortfolios() {
+            if (confirm("УВАГА! Ви видалите УСІ портфоліо з сайту для УСІХ користувачів. Продовжити?")) {
+                portfolios = [];
+                adminBroadcast.postMessage({ type: 'PORTFOLIOS_UPDATED', payload: { portfolios } });
+                renderPortfolios();
+                openAdminModal();
+                showToast("Усі портфоліо видалено!");
+                addActivityLog("Масове видалення усіх портфоліо (Глобально)");
             }
         }
 
